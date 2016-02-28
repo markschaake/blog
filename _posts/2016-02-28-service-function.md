@@ -37,7 +37,7 @@ trait FooRepository {
 }
 ```
 
-Where a `FooRequest` is an [algebraic data type][adt] (ADT):
+Where a `FooRequest` is an [algebraic data type][adt] (ADT) parameterized by a response type:
 
 ```scala
 sealed trait FooRequest[Response]
@@ -50,6 +50,8 @@ object FooRequest {
   case class Delete(id: String) extends FooRequest[Unit]
 }
 ```
+
+Notice that each concrete request type provides a `Response` type. For example, `Read` has a response type of `Option[Foo]`. Requiring that the response type be specified by each concrete request type enables our service function to be _polymorphic_. In other words, the return type of our service function is statically typed to be the response type of the request object.
 
 Client code would use the `FooRepository` service function like so:
 
