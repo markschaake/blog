@@ -195,7 +195,7 @@ object AsyncFooRepositoryImpl extends AsyncService[FooRequest] {
     case All => ??? // Future[Iterable[Foo]]
     case Fetch(p) => ??? // Future[Iterable[Foo]]
     case Create(name) => ??? // Future[Foo]
-    case class Read(id) => ??? // Future[Option[Foo]]
+    case Read(id) => ??? // Future[Option[Foo]]
     case Update(id, updater) => ??? // Future[Foo]
     case Delete(id) => ??? // Future[Unit]
   }
