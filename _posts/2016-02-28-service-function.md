@@ -51,7 +51,7 @@ object FooRequest {
 }
 ```
 
-Notice that each concrete request type provides a `Response` type. For example, `Read` has a response type of `Option[Foo]`. Requiring that the response type be specified by each concrete request type enables our service function to be _polymorphic_. In other words, the return type of our service function is statically typed to be the response type of the request object.
+Notice that each concrete request type provides a `Response` type (via type parameter). For example, `Read` has a response type of `Option[Foo]`. Requiring that the response type be specified by each concrete request type enables our service function to be _polymorphic_. In other words, the return type of our service function is statically typed to be the response type of the request object.
 
 Client code would use the `FooRepository` service function like so:
 
@@ -59,7 +59,7 @@ Client code would use the `FooRepository` service function like so:
 class BarService(fooRepository: FooRepository) {
   def updateAllFoos(): Unit = 
     fooRepository(FooRequest.All) foreach { foo =>
-      fooRepository(FooRequest.Update(foo.id, _.lastUpdated = Instant.now))
+      fooRepository(FooRequest.Update(foo.id, _.copy(lastUpdated = Instant.now)))
     }
 }
 ```
@@ -74,7 +74,7 @@ ADTs in place of method signatures help to orient design around the domain model
 
 If we can limit our design to consist of data models, ADTs, and functions that operate on them, then we naturally fall into functional programming (at least this is how I'm seeing it currently).
 
-## Adding Response Wrappers
+## Adding Error Handling
 
 One problem with our above example is that there is no handling of errors. You can imagine a recoverable exception being thrown in the underlying persistence layer. We want to be good functional programmers and not allow uncaught recoverable exceptions in our code. What if we wrapped all of our service responses in a `scala.util.Try`?
 
@@ -125,7 +125,7 @@ trait Service[M[_], Request[_]] {
 }
 ```
 
-__Note__: the `M[_]` and `Request[_]` type parameters are what is known as a "higher kinded" types and will cause a compiler error telling you that you must import `scala.language.higherkinds`. Instead of following the compiler error's suggestion, I recommend setting up your build with the scalac compiler flags per [tpolecat's recommendation][tpolecat-scalac-flags]. This will also cause all compiler warnings to be considered errors - which is important for exhaustive pattern matching (which you will do in `Service` implementations).
+__Note__: the `M[_]` and `Request[_]` type parameters are what is known as "higher kinded" types and will cause a compiler error telling you that you must import `scala.language.higherkinds`. Instead of following the compiler error's suggestion, I recommend setting up your build with the scalac compiler flags per [tpolecat's recommendation][tpolecat-scalac-flags]. This will also cause all compiler warnings to be considered errors - which is important for exhaustive pattern matching (which you will do in `Service` implementations).
 
 We can provide `Service` types that have the wrapper type already set:
 
@@ -144,11 +144,13 @@ trait SyncFooRepository extends SyncService[FooRequest]
 trait AsyncFooRepository extends AsyncService[FooRequest]
 ```
 
-## Mapping an AsyncService to a SyncService
+## Generically Map an AsyncService to a SyncService
 
-I frequently work on non-blocking web applications. Often times, we need CLI that use the services defined in our production web application. It can be annoying to work with async services in a CLI. It would be great if I could map an `AsyncService` to a `SyncService` and just use the synchronous version. Here's how we can do that:
+I frequently work on non-blocking web applications. Often times, we need a CLI that use the services defined in our production web application. It can be annoying to work with async services in a CLI. It would be great if I could map an `AsyncService` to a `SyncService` and just use the synchronous version. Here's how we can do that:
 
 ```scala
+
+
 trait SyncFooRepository extends SyncService[FooRequest]
 trait AsyncFooRepository extends AsyncService[FooRequest]
 
@@ -162,12 +164,12 @@ object SyncService {
     * @param asyncService the service to convert to blocking
     * @param timeout the timeout to use when blocking on responses
     */
-  def apply[Request[_]](asyncService: AsyncService[Request], timeout: Duration = Duration.Inf): SyncService[Request] = {
+  def apply[Request[_]](asyncService: AsyncService[Request], timeout: Duration = Duration.Inf): SyncService[Request] =
     new SyncService[Request] {
-      val mapped = asyncService map (resp => Try(Await.result(resp, timeout)))
-      override def apply[Response](request: Request[Response]): Try[Response] = mapped(request)
+      override def apply[Response](request: Request[Response]): Try[Response] = Try {
+        Await.result(asyncService(request), timeout)
+      }
     }
-  }
 }
 ```
 
@@ -177,9 +179,26 @@ And now we can do this:
 object CLI extends App {
   // We have only one FooRepository implementation: AsyncFooRepositoryImpl
   // We can create a synchronous version easily:
-  val fooRepo: AsyncService[FooRequest] = SyncService(AsyncFooRepositoryImpl)
+  val fooRepo: SyncService[FooRequest] = SyncService(AsyncFooRepositoryImpl)
   
   // do stuff with the repository synchronously...
+}
+```
+
+In case you are wondering what `AsyncFooRepositoryImpl` would look like, it might be something like:
+
+```scala
+object AsyncFooRepositoryImpl extends AsyncService[FooRequest] {
+  import FooRequest._
+
+  override def apply[Response](request: FooRequest[Response]): Future[Response] = request match {
+    case All => ??? // Future[Iterable[Foo]]
+    case Fetch(p) => ??? // Future[Iterable[Foo]]
+    case Create(name) => ??? // Future[Foo]
+    case class Read(id) => ??? // Future[Option[Foo]]
+    case Update(id, updater) => ??? // Future[Foo]
+    case Delete(id) => ??? // Future[Unit]
+  }
 }
 ```
 
