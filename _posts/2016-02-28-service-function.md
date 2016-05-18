@@ -68,7 +68,7 @@ class BarService(fooRepository: FooRepository) {
 
 What are the rewards for writing services as __Service Functions__? 
 
-As written above, the only real difference between the service defined as a trait with abstract methods and the service defined as a function is that the service's interface is expressed by an ADT in the latter. Having the ADT separate from the service introduces flexibility (you can use the same ADT in other places - e.g. as messages to actors). 
+As written above, the only real difference between the service defined as a trait with abstract methods and the service defined as a function is that the service's interface is expressed by an ADT in the latter. Having the ADT separate from the service introduces flexibility (you can use the same ADT in other places - e.g. as messages to actors or as JSON serializable objects for REST or WebSocket transport). 
 
 ADTs in place of method signatures help to orient design around the domain models (think [domain driven design][ddd]).
 
